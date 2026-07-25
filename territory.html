@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Territory Claimer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--panel:#161b22;--border:#30363d;--text:#e6edf3;--dim:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:#0d1117;color:var(--text)}
+
+#map{position:fixed;inset:0;z-index:1}
+
+.ui-layer{position:fixed;inset:0;z-index:100;pointer-events:none;transition:opacity .5s}
+.ui-layer>*{pointer-events:auto}
+.ui-layer.hidden{opacity:0;pointer-events:none !important}
+
+.world-title{position:absolute;top:24px;left:50%;transform:translateX(-50%);text-align:center}
+.world-title h1{font-size:34px;font-weight:800;letter-spacing:-1px;text-shadow:0 2px 24px rgba(0,0,0,.9);margin-bottom:4px}
+.world-title h1 span{color:var(--accent)}
+.world-title p{color:var(--dim);font-size:14px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+
+.world-counter{position:absolute;top:20px;right:20px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 16px}
+.world-counter .wc-num{font-size:22px;font-weight:700;color:var(--accent)}
+.world-counter .wc-label{font-size:11px;color:var(--dim)}
+
+.world-drop{position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding:20px}
+.drop-area{border:2px dashed rgba(255,255,255,.2);border-radius:16px;padding:24px 40px;background:rgba(0,0,0,.65);backdrop-filter:blur(10px);transition:all .3s;cursor:pointer;text-align:center}
+.drop-area.active{border-color:var(--accent);background:rgba(88,166,255,.12);transform:scale(1.03)}
+.drop-area h3{font-size:16px;font-weight:600;margin-bottom:4px}
+.drop-area p{font-size:13px;color:var(--dim);margin:0}
+.browse-link{color:var(--accent);text-decoration:underline;cursor:pointer}
+
+.world-btns{position:absolute;top:20px;left:20px;display:flex;gap:8px}
+.world-btns .btn{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.world-btns .btn:hover{border-color:var(--accent)}
+
+.user-badge{position:absolute;top:20px;right:200px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.user-badge .ub-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.user-badge .ub-name{font-weight:600}
+.user-badge .ub-logout{color:var(--dim);font-size:11px;margin-left:4px}
+.user-badge .ub-logout:hover{color:var(--red)}
+
+.ride-header{position:absolute;top:12px;left:60px;right:12px;display:flex;align-items:center;gap:8px}
+.ride-header h1{font-size:16px;font-weight:600;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.layer-select{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;cursor:pointer}
+.btn{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.back-btn{position:absolute;top:12px;left:12px;width:40px;height:40px;border-radius:8px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.back-btn:hover{border-color:var(--accent)}
+
+.sidebar{position:fixed;top:0;left:0;width:360px;height:100%;background:var(--panel);border-right:1px solid var(--border);z-index:200;transform:translateX(-100%);transition:transform .3s;display:flex;flex-direction:column}
+.sidebar.open{transform:translateX(0)}
+.sidebar-header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.sidebar-close{background:none;border:none;color:var(--dim);font-size:20px;cursor:pointer;padding:4px 8px}
+.ride-list{flex:1;overflow-y:auto;padding:8px}
+.ride-card{padding:10px;border-radius:10px;cursor:pointer;margin-bottom:6px;border:1px solid var(--border);transition:all .2s;display:flex;gap:10px;align-items:center}
+.ride-card:hover{background:rgba(88,166,255,.06);border-color:var(--accent)}
+.ride-card.claimed{border-color:var(--green);background:rgba(63,185,80,.06)}
+.ride-thumb{width:64px;height:64px;border-radius:6px;background:var(--bg);border:1px solid var(--border);flex-shrink:0;overflow:hidden}
+.ride-info{flex:1;min-width:0}
+.ride-info .date{font-size:12px;color:var(--dim)}
+.ride-info .dist{font-size:15px;font-weight:600;margin:2px 0}
+.ride-info .meta{font-size:11px;color:var(--dim)}
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border);font-size:11px;color:var(--dim);text-align:center}
+
+.rpanel{position:fixed;top:0;right:0;width:340px;height:100%;background:var(--panel);border-left:1px solid var(--border);z-index:150;display:none;flex-direction:column;overflow-y:auto}
+.rpanel.visible{display:flex}
+.rp-header{padding:20px;border-bottom:1px solid var(--border);text-align:center}
+.rp-header h3{font-size:18px;font-weight:700}
+.rp-header .rpdate{font-size:13px;color:var(--accent);margin-top:6px}
+.rp-header .rbbadge{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700}
+.rbbadge.claimed{background:var(--green);color:#000}
+.rbbadge.historical{background:var(--border);color:var(--dim)}
+.rp-stats{padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.rps{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 8px;text-align:center}
+.rps .rv{font-size:20px;font-weight:700;color:var(--accent)}
+.rps .rl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.rp-graphs{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
+.rpg{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px}
+.rpg .rgt{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.rpg canvas{width:100%;display:block}
+.rpg .rgv{font-size:12px;font-weight:600;margin-top:6px;text-align:right}
+.rp-flyby{padding:0 16px 16px}
+.rp-flyby .btn{width:100%;justify-content:center;padding:12px;font-weight:600;font-size:14px;background:var(--accent);border-color:var(--accent);color:#fff}
+.flyby{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:150;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 16px;display:none;align-items:center;gap:12px;min-width:380px}
+.flyby.visible{display:flex}
+.flyby-btn{background:none;border:none;color:var(--text);font-size:18px;cursor:pointer;padding:4px}
+.flyby-progress{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--border);outline:none;cursor:pointer}
+.flyby-progress::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer}
+.flyby-speed{font-size:11px;color:var(--dim);min-width:36px;text-align:center;cursor:pointer;user-select:none}
+.flyby-time{font-size:11px;color:var(--dim);min-width:80px;text-align:center}
+.arrow-marker{transition:none}
+.territory-popup .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+.territory-popup .leaflet-popup-tip{background:var(--panel)}
+.tp-title{font-size:13px;font-weight:700;margin-bottom:4px}
+.tp-meta{font-size:11px;color:var(--dim)}
+.tp-btn{margin-top:8px;padding:5px 12px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:11px;cursor:pointer;font-weight:600}
+.tp-btn:hover{background:var(--accent);color:#fff}
+
+.auth-overlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center}
+.auth-overlay.hidden{display:none}
+.auth-box{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:40px;width:380px;max-width:90vw;text-align:center}
+.auth-box h2{font-size:24px;font-weight:800;margin-bottom:4px}
+.auth-box h2 span{color:var(--accent)}
+.auth-box p{color:var(--dim);font-size:13px;margin-bottom:24px}
+.auth-box input{width:100%;padding:12px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;margin-bottom:12px;outline:none}
+.auth-box input:focus{border-color:var(--accent)}
+.auth-box .auth-btn{width:100%;padding:12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:15px;font-weight:700;cursor:pointer}
+.auth-box .auth-btn:hover{opacity:.9}
+.auth-box .auth-btn:disabled{opacity:.4;cursor:not-allowed}
+.auth-box .auth-error{color:var(--red);font-size:12px;margin-top:8px;min-height:16px}
+
+.lb-panel{position:fixed;top:60px;left:20px;width:280px;max-height:60vh;background:var(--panel);border:1px solid var(--border);border-radius:12px;z-index:120;display:none;flex-direction:column;overflow:hidden}
+.lb-panel.visible{display:flex}
+.lb-header{padding:12px 16px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+.lb-close{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer}
+.lb-list{overflow-y:auto;padding:8px}
+.lb-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;margin-bottom:2px}
+.lb-row:hover{background:rgba(255,255,255,.03)}
+.lb-row.me{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2)}
+.lb-rank{font-size:14px;font-weight:800;color:var(--dim);min-width:24px;text-align:center}
+.lb-rank.gold{color:#ffd700}
+.lb-rank.silver{color:#c0c0c0}
+.lb-rank.bronze{color:#cd7f32}
+.lb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.lb-name{flex:1;font-size:13px;font-weight:600}
+.lb-area{font-size:12px;color:var(--accent);font-weight:600;white-space:nowrap}
+.lb-rides{font-size:10px;color:var(--dim)}
+.lb-empty{padding:20px;text-align:center;color:var(--dim);font-size:13px}
+
+@media(max-width:600px){.world-title h1{font-size:24px}.rpanel{width:280px}.flyby{min-width:280px}.sidebar{width:300px}.lb-panel{left:10px;width:260px}.user-badge{right:auto;left:80px}}
+</style>
+</head>
+<body>
+
+<div id="authOverlay" class="auth-overlay">
+  <div class="auth-box">
+    <h2><span>Territory</span> Claimer</h2>
+    <p>Enter your name to start claiming territory</p>
+    <input type="text" id="authName" placeholder="Display name" maxlength="24" autocomplete="off">
+    <button class="auth-btn" id="authBtn">Enter</button>
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div class="ui-layer" id="worldUI">
+  <div class="world-title">
+    <h1><span>Territory</span> Claimer</h1>
+    <p>Explore claimed territories around the world</p>
+  </div>
+  <div class="world-counter" id="territoryCount"><div class="wc-num">0</div><div class="wc-label">Territories Claimed</div></div>
+  <div class="user-badge" id="userBadge" style="display:none"><div class="ub-dot" id="ubDot"></div><span class="ub-name" id="ubName"></span><span class="ub-logout" id="ubLogout">logout</span></div>
+  <div class="world-btns">
+    <button class="btn" id="leaderboardBtn">&#127942; Leaderboard</button>
+    <button class="btn" id="historyBtn">History</button>
+  </div>
+  <div class="world-drop">
+    <div class="drop-area" id="dropArea">
+      <h3>Drop a GPX file to claim territory</h3>
+      <p>or <span class="browse-link" id="browseLink">browse files</span></p>
+      <input type="file" accept=".gpx" id="fileInput" style="display:none">
+    </div>
+  </div>
+</div>
+
+<div class="lb-panel" id="lbPanel">
+  <div class="lb-header"><span>&#127942; Leaderboard</span><button class="lb-close" id="lbClose">&#10005;</button></div>
+  <div class="lb-list" id="lbList"><div class="lb-empty">No riders yet</div></div>
+</div>
+
+<div class="ui-layer hidden" id="rideUI">
+  <button class="back-btn" id="backBtn" title="Back to World Map">&#8592;</button>
+  <div class="ride-header">
+    <h1>Territory Claimer</h1>
+    <select class="layer-select" id="layerSelect">
+      <option value="dark">Dark Map</option>
+      <option value="osm">Street Map</option>
+      <option value="satellite">Satellite</option>
+      <option value="terrain">Terrain</option>
+    </select>
+    <button class="btn" id="rideHistoryBtn">History</button>
+  </div>
+</div>
+
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header"><h2>Ride History</h2><button class="sidebar-close" id="sidebarClose">&#10005;</button></div>
+  <div class="ride-list" id="rideList"></div>
+  <div class="sidebar-footer">Latest ride per location is claimed</div>
+</div>
+
+<div class="rpanel" id="rpanel">
+  <div class="rp-header"><h3 id="rpTitle">Ride</h3><div class="rpdate" id="rpDate"></div><div class="rbbadge" id="rpBadge"></div></div>
+  <div class="rp-stats" id="rpStats"></div>
+  <div class="rp-graphs">
+    <div class="rpg"><div class="rgt">Speed (km/h)</div><canvas id="rpSpeedCanvas"></canvas><div class="rgv" id="rpSpeedVal">0 km/h</div></div>
+    <div class="rpg"><div class="rgt">Elevation (m)</div><canvas id="rpEleCanvas"></canvas><div class="rgv" id="rpEleVal">0 m</div></div>
+  </div>
+  <div class="rp-flyby"><button class="btn" id="rpFlybyBtn">&#9654; Play Flyby</button></div>
+</div>
+
+<div class="flyby" id="flyby">
+  <button class="flyby-btn" id="flybyPlay">&#9654;</button>
+  <input type="range" class="flyby-progress" id="flybyProgress" min="0" max="1000" value="0" step="0.1">
+  <span class="flyby-time" id="flybyTime">0:00 / 0:00</span>
+  <span class="flyby-speed" id="flybySpeed">5x</span>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var API=location.origin;
+var ARROW_SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><polygon points="16,2 28,28 16,22 4,28" fill="%2358a6ff" stroke="%23fff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+
+var map=null;
+var worldView=true;
+var worldMarkers=[];var worldPolys=[];var worldTerritoryPolys=[];
+var routeLayer=null,territoryLayer=null,arrowMarker=null;
+var currentRide=null,currentRideIdx=-1,animating=false,animFrame=null,animSpeed=5;
+var animElapsed=0,smoothedSpeeds=[];
+var rides=[];
+var currentUser=null;
+var speedOptions=[1,3,5,10,20,50];
+var speedIdx=2;
+var userColors={};
+
+var tileSets={};
+function getTileSets(){
+  if(Object.keys(tileSets).length>0)return tileSets;
+  tileSets.dark=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'CARTO',maxZoom:19,subdomains:'abcd'});
+  tileSets.osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM',maxZoom:19});
+  tileSets.satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxZoom:19});
+  tileSets.terrain=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'OpenTopoMap',maxZoom:17});
+  return tileSets;
+}
+
+async function api(path,opts){
+  var r=await fetch(API+path,opts);
+  return r.json();
+}
+
+function getLatestRideIndex(){var latest=-1,latestTime=0;rides.forEach(function(r,i){var t=r.time?new Date(r.time).getTime():0;if(t>=latestTime){latestTime=t;latest=i}});return latest}
+
+function haversine(p1,p2){
+  var R=6371000,dLat=(p2.lat-p1.lat)*Math.PI/180,dLon=(p2.lon-p1.lon)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(p1.lat*Math.PI/180)*Math.cos(p2.lat*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function parseGPX(xml){
+  var doc=new DOMParser().parseFromString(xml,'text/xml');
+  if(doc.querySelector('parsererror'))return null;
+  var pts=[];var rideTime=null;
+  var metaTime=doc.querySelector('metadata > time');
+  if(metaTime)rideTime=metaTime.textContent;
+  doc.querySelectorAll('trk trkpt, rte rtept').forEach(function(pt){
+    var lat=parseFloat(pt.getAttribute('lat'));
+    var lon=parseFloat(pt.getAttribute('lon'));
+    var eleEl=pt.querySelector('ele');
+    var ele=eleEl?parseFloat(eleEl.textContent):null;
+    var timeEl=pt.querySelector('time');
+    var time=timeEl?timeEl.textContent:null;
+    if(!isNaN(lat)&&!isNaN(lon))pts.push({lat:lat,lon:lon,ele:ele,time:time});
+    if(!rideTime&&time)rideTime=time;
+  });
+  if(pts.length<2)return null;
+  if(!rideTime&&pts[0].time)rideTime=pts[0].time;
+  return{points:pts,time:rideTime};
+}
+function calcStats(pts){
+  var dist=0,maxSpeed=0,elevGain=0;var speeds=[],eles=[];
+  for(var i=1;i<pts.length;i++){
+    var d=haversine(pts[i-1],pts[i]);dist+=d;
+    if(pts[i].ele!=null&&pts[i-1].ele!=null&&pts[i].ele>pts[i-1].ele)elevGain+=pts[i].ele-pts[i-1].ele;
+    var spd=0;
+    if(pts[i].time&&pts[i-1].time){var dt=(new Date(pts[i].time)-new Date(pts[i-1].time))/1000;if(dt>0&&dt<300)spd=(d/dt)*3.6;}
+    speeds.push(spd);eles.push(pts[i].ele!=null?pts[i].ele:0);
+    if(spd>maxSpeed)maxSpeed=spd;
+  }
+  var totalSec=0;
+  if(pts[0].time&&pts[pts.length-1].time)totalSec=(new Date(pts[pts.length-1].time)-new Date(pts[0].time))/1000;
+  if(totalSec<0)totalSec=0;
+  return{distance:dist,maxSpeed:maxSpeed,avgSpeed:speeds.length>0?speeds.reduce(function(a,b){return a+b},0)/speeds.length:0,elevGain:elevGain,duration:totalSec,points:pts,speeds:speeds,eles:eles};
+}
+function niceStep(range,targetTicks){
+  if(range<=0)return 1;
+  var rough=range/targetTicks,mag=Math.pow(10,Math.floor(Math.log10(rough))),norm=rough/mag;
+  if(norm<=1.5)return mag;if(norm<=3.5)return 2*mag;if(norm<=7.5)return 5*mag;return 10*mag;
+}
+function drawAxisGraph(canvas,values,fillColor,lineColor,currentIdx){
+  var ctx=canvas.getContext('2d');
+  var dpr=window.devicePixelRatio||1;
+  var W=canvas.parentElement.clientWidth-24;
+  var H=120;
+  if(W<10)W=250;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  ctx.scale(dpr,dpr);ctx.clearRect(0,0,W,H);
+  if(!values||values.length<2)return;
+  var lPad=36,rPad=6,tPad=6,bPad=18,gW=W-lPad-rPad,gH=H-tPad-bPad;
+  var maxVal=-Infinity,minVal=Infinity;
+  for(var k=0;k<values.length;k++){if(values[k]>maxVal)maxVal=values[k];if(values[k]<minVal)minVal=values[k]}
+  if(maxVal===minVal)maxVal=minVal+1;
+  var range=maxVal-minVal;
+  var step=niceStep(range,3),yMin=Math.floor(minVal/step)*step,yMax=Math.ceil(maxVal/step)*step,yRange=yMax-yMin||1;
+  ctx.strokeStyle='rgba(255,255,255,0.06)';ctx.lineWidth=0.5;ctx.fillStyle='#8b949e';ctx.font='9px sans-serif';
+  ctx.textAlign='right';ctx.textBaseline='middle';
+  for(var v=yMin;v<=yMax+0.001;v+=step){var y=tPad+gH-((v-yMin)/yRange)*gH;ctx.beginPath();ctx.moveTo(lPad,y);ctx.lineTo(lPad+gW,y);ctx.stroke();ctx.fillText(v%1===0?String(v):v.toFixed(1),lPad-4,y)}
+  ctx.fillStyle='#8b949e';ctx.textAlign='center';ctx.textBaseline='top';
+  for(var i2=0;i2<=4;i2++){var x2=lPad+(i2/4)*gW;ctx.fillText(Math.round((i2/4)*100)+'%',x2,tPad+gH+4)}
+  ctx.beginPath();ctx.moveTo(lPad,tPad+gH);
+  for(var i=0;i<values.length;i++){var x=lPad+(i/(values.length-1))*gW,y2=tPad+gH-((values[i]-yMin)/yRange)*gH;ctx.lineTo(x,y2)}
+  ctx.lineTo(lPad+gW,tPad+gH);ctx.closePath();ctx.fillStyle=fillColor;ctx.fill();
+  ctx.beginPath();
+  for(var i=0;i<values.length;i++){var x=lPad+(i/(values.length-1))*gW,y2=tPad+gH-((values[i]-yMin)/yRange)*gH;if(i===0)ctx.moveTo(x,y2);else ctx.lineTo(x,y2)}
+  ctx.strokeStyle=lineColor;ctx.lineWidth=2;ctx.stroke();
+  if(currentIdx!=null&&currentIdx>=0&&currentIdx<values.length){
+    var cx=lPad+(currentIdx/(values.length-1))*gW,ci=Math.min(Math.floor(currentIdx),values.length-1),cy=tPad+gH-((values[ci]-yMin)/yRange)*gH;
+    ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.fillStyle=lineColor;ctx.fill();
+    ctx.beginPath();ctx.arc(cx,cy,7,0,Math.PI*2);ctx.strokeStyle=lineColor;ctx.lineWidth=1;ctx.globalAlpha=0.3;ctx.stroke();ctx.globalAlpha=1;
+  }
+}
+function formatDuration(sec){
+  if(sec<0)sec=0;var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=Math.floor(sec%60);
+  if(h>0)return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+  return m+':'+String(s).padStart(2,'0');
+}
+function formatDate(iso){
+  if(!iso)return{date:'Unknown',time:'',full:'Unknown'};
+  var d=new Date(iso);
+  return{date:d.toLocaleDateString('en-US',{weekday:'short',year:'numeric',month:'short',day:'numeric'}),time:d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}),full:d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})};
+}
+function formatArea(m2){
+  if(m2<10000)return m2.toFixed(0)+' m\u00B2';
+  return (m2/1000000).toFixed(2)+' km\u00B2';
+}
+function drawThumb(canvas,pts){
+  var ctx=canvas.getContext('2d'),dpr=window.devicePixelRatio||1;
+  canvas.width=64*dpr;canvas.height=64*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,64,64);
+  if(pts.length<2)return;
+  var minLat=Infinity,maxLat=-Infinity,minLon=Infinity,maxLon=-Infinity;
+  pts.forEach(function(p){minLat=Math.min(minLat,p.lat);maxLat=Math.max(maxLat,p.lat);minLon=Math.min(minLon,p.lon);maxLon=Math.max(maxLon,p.lon)});
+  var dLat=maxLat-minLat||0.001,dLon=maxLon-minLon||0.001,pad=6;
+  ctx.beginPath();
+  pts.forEach(function(p,i){var x=pad+((p.lon-minLon)/dLon)*(64-pad*2),y=pad+(1-(p.lat-minLat)/dLat)*(64-pad*2);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});
+  ctx.strokeStyle='#58a6ff';ctx.lineWidth=1.5;ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
+}
+function getCenter(pts){
+  var lat=0,lng=0;
+  pts.forEach(function(p){lat+=p.lat;lng+=p.lon});
+  return{lat:lat/pts.length,lng:lng/pts.length};
+}
+
+function initMap(){
+  if(map)return;
+  getTileSets();
+  map=L.map('map',{zoomControl:false,attributionControl:false,worldCopyJump:true}).setView([20,0],2);
+  tileSets.dark.addTo(map);
+}
+
+function clearRideOverlays(){
+  if(routeLayer){try{map.removeLayer(routeLayer)}catch(e){}routeLayer=null}
+  if(territoryLayer){try{map.removeLayer(territoryLayer)}catch(e){}territoryLayer=null}
+  if(arrowMarker){try{map.removeLayer(arrowMarker)}catch(e){}arrowMarker=null}
+}
+
+function renderWorldTerritories(){
+  worldMarkers.forEach(function(m){try{map.removeLayer(m)}catch(e){}});
+  worldPolys.forEach(function(p){try{map.removeLayer(p)}catch(e){}});
+  worldTerritoryPolys.forEach(function(p){try{map.removeLayer(p)}catch(e){}});
+  worldMarkers=[];worldPolys=[];worldTerritoryPolys=[];
+
+  rides.forEach(function(r,i){
+    var s=r.stats;var pts=s.points;var center=getCenter(pts);
+    var color=userColors[r.user_id]||'#888';
+    var isMe=currentUser&&r.user_id===currentUser.id;
+
+    var icon=L.divIcon({className:'',html:'<div style="width:14px;height:14px;border-radius:50%;background:'+color+';border:2px solid rgba(255,255,255,.8);box-shadow:0 0 12px '+color+';opacity:0.9"></div>',iconSize:[14,14],iconAnchor:[7,7]});
+    var marker=L.marker([center.lat,center.lng],{icon:icon}).addTo(map);
+    var df=r.time?formatDate(r.time).full:'Unknown';
+    var popup='<div class="tp-title" style="color:'+color+'">'+r.user_name+'</div>'+
+      '<div class="tp-meta">'+df+'</div>'+
+      '<div class="tp-meta">'+(s.distance/1000).toFixed(2)+' km &bull; '+formatDuration(s.duration)+'</div>'+
+      (r.claimed_area_m2>0?'<div class="tp-meta">'+formatArea(r.claimed_area_m2)+' claimed</div>':'')+
+      '<button class="tp-btn" onclick="switchToRide('+i+')">View Details</button>';
+    marker.bindPopup(popup,{className:'territory-popup',closeButton:false,maxWidth:200});
+    worldMarkers.push(marker);
+
+    var latlngs=pts.map(function(p){return[p.lat,p.lon]});
+    var rideLine=L.polyline(latlngs,{color:color,weight:isMe?3:2,opacity:isMe?0.8:0.5,smoothFactor:1}).addTo(map);
+    (function(rideIdx){rideLine.on('click',function(){switchToRide(rideIdx)})})(i);
+    worldPolys.push(rideLine);
+
+    if(r.claimed_area&&r.claimed_area.coordinates&&r.claimed_area.coordinates[0]){
+      var ccoords=r.claimed_area.coordinates[0];
+      var polyCoords=ccoords.map(function(c){return[c[1],c[0]]});
+      var poly=L.polygon(polyCoords,{color:color,fillColor:color,fillOpacity:0.12,weight:1,opacity:0.4,interactive:false}).addTo(map);
+      worldTerritoryPolys.push(poly);
+    }else if(pts.length>=3){
+      var polyCoords2=pts.map(function(p){return[p.lat,p.lon]});
+      polyCoords2.push(polyCoords2[0]);
+      var poly2=L.polygon(polyCoords2,{color:color,fillColor:color,fillOpacity:0.08,weight:1,opacity:0.3,dashArray:'4,4',interactive:false}).addTo(map);
+      worldTerritoryPolys.push(poly2);
+    }
+  });
+  document.getElementById('territoryCount').querySelector('.wc-num').textContent=rides.length;
+}
+
+function showWorldOverlays(){
+  worldMarkers.forEach(function(m){try{map.addLayer(m)}catch(e){}});
+  worldPolys.forEach(function(p){try{map.addLayer(p)}catch(e){}});
+  worldTerritoryPolys.forEach(function(p){try{map.addLayer(p)}catch(e){}});
+}
+function hideWorldOverlays(){
+  worldMarkers.forEach(function(m){try{map.removeLayer(m)}catch(e){}});
+  worldPolys.forEach(function(p){try{map.removeLayer(p)}catch(e){}});
+  worldTerritoryPolys.forEach(function(p){try{map.removeLayer(p)}catch(e){}});
+}
+
+function openRideView(idx){
+  currentRideIdx=idx;currentRide=rides[idx];
+  var s=currentRide.stats;var pts=s.points;
+  document.getElementById('worldUI').classList.add('hidden');
+  document.getElementById('rideUI').classList.remove('hidden');
+  clearRideOverlays();
+  var color=userColors[currentRide.user_id]||'#888';
+  var latlngs=pts.map(function(p){return[p.lat,p.lon]});
+  routeLayer=L.polyline(latlngs,{color:color,weight:4,opacity:1,smoothFactor:1,interactive:false}).addTo(map);
+  if(pts.length>=3){
+    var polyCoords=pts.map(function(p){return[p.lat,p.lon]});
+    polyCoords.push(polyCoords[0]);
+    territoryLayer=L.polygon(polyCoords,{color:color,fillColor:color,fillOpacity:0.15,weight:2,dashArray:'6,4',interactive:false}).addTo(map);
+  }
+  var arrowDiv=L.divIcon({className:'arrow-marker',html:ARROW_SVG.replace('%2358a6ff',encodeURIComponent(color)),iconSize:[24,24],iconAnchor:[12,12]});
+  arrowMarker=L.marker(latlngs[0],{icon:arrowDiv,interactive:false}).addTo(map);
+  var bounds=L.latLngBounds(pts.map(function(p){return[p.lat,p.lon]}));
+  map.fitBounds(bounds.pad(0.15),{animate:true,duration:1.5});
+  document.getElementById('rpTitle').textContent=currentRide.user_name+"'s Ride";
+  document.getElementById('rpDate').textContent=currentRide.time?formatDate(currentRide.time).full:'Unknown';
+  var isOwn=currentUser&&currentRide.user_id===currentUser.id;
+  var badge=document.getElementById('rpBadge');
+  if(isOwn){badge.textContent='YOUR RIDE';badge.className='rbbadge claimed'}
+  else{badge.textContent=currentRide.user_name;badge.className='rbbadge historical'}
+  document.getElementById('rpStats').innerHTML=
+    '<div class="rps"><div class="rv">'+(s.distance/1000).toFixed(2)+'</div><div class="rl">KM DISTANCE</div></div>'+
+    '<div class="rps"><div class="rv">'+formatDuration(s.duration)+'</div><div class="rl">DURATION</div></div>'+
+    '<div class="rps"><div class="rv">'+s.avgSpeed.toFixed(1)+'</div><div class="rl">AVG KM/H</div></div>'+
+    '<div class="rps"><div class="rv">'+s.maxSpeed.toFixed(1)+'</div><div class="rl">MAX KM/H</div></div>'+
+    '<div class="rps"><div class="rv">'+s.elevGain.toFixed(0)+'</div><div class="rl">ELEV GAIN M</div></div>'+
+    '<div class="rps"><div class="rv">'+formatArea(currentRide.claimed_area_m2||0)+'</div><div class="rl">CLAIMED</div></div>';
+  document.getElementById('rpSpeedVal').textContent=s.avgSpeed.toFixed(1)+' km/h avg / '+s.maxSpeed.toFixed(0)+' km/h max';
+  document.getElementById('rpEleVal').textContent=s.elevGain.toFixed(0)+'m gained';
+  document.getElementById('rpanel').classList.add('visible');
+  setTimeout(function(){
+    drawAxisGraph(document.getElementById('rpSpeedCanvas'),s.speeds,'#88ccff44',color,null);
+    drawAxisGraph(document.getElementById('rpEleCanvas'),s.eles,'#3fb95044','#3fb950',null);
+  },60);
+  worldView=false;
+}
+
+function closeRideView(){
+  document.getElementById('rpanel').classList.remove('visible');
+  document.getElementById('flyby').classList.remove('visible');
+  animating=false;if(animFrame)cancelAnimationFrame(animFrame);
+  clearRideOverlays();
+  document.getElementById('rideUI').classList.add('hidden');
+  document.getElementById('worldUI').classList.remove('hidden');
+  map.flyTo([20,0],2,{duration:1.5});
+  worldView=true;
+}
+
+window.switchToRide=function(idx){
+  if(idx===currentRideIdx&&!worldView)return;
+  showRideDetail(idx);
+};
+window.openRide=function(idx){openRideView(idx)};
+
+function renderHistory(){
+  var list=document.getElementById('rideList');list.innerHTML='';
+  rides.forEach(function(r,i){
+    var s=r.stats;
+    var df=r.time?formatDate(r.time):{full:'Unknown'};
+    var color=userColors[r.user_id]||'#888';
+    var card=document.createElement('div');card.className='ride-card';
+    card.innerHTML='<div class="ride-thumb"><canvas width="64" height="64"></canvas></div><div class="ride-info"><div class="date">'+df.full+' &bull; '+r.user_name+'</div><div class="dist">'+(s.distance/1000).toFixed(2)+' km</div><div class="meta">'+formatDuration(s.duration)+' &bull; '+s.maxSpeed.toFixed(0)+' km/h &bull; '+formatArea(r.claimed_area_m2||0)+'</div></div>';
+    var canvas=card.querySelector('canvas');
+    drawThumb(canvas,s.points);
+    card.addEventListener('click',function(){showRideDetail(i);document.getElementById('sidebar').classList.remove('open')});
+    list.appendChild(card);
+  });
+}
+function showRideDetail(idx){
+  if(worldView){openRideView(idx);return}
+  currentRideIdx=idx;currentRide=rides[idx];
+  var s=currentRide.stats;var pts=s.points;
+  clearRideOverlays();
+  var color=userColors[currentRide.user_id]||'#888';
+  var latlngs=pts.map(function(p){return[p.lat,p.lon]});
+  routeLayer=L.polyline(latlngs,{color:color,weight:4,opacity:1,smoothFactor:1,interactive:false}).addTo(map);
+  if(pts.length>=3){
+    var polyCoords=pts.map(function(p){return[p.lat,p.lon]});
+    polyCoords.push(polyCoords[0]);
+    territoryLayer=L.polygon(polyCoords,{color:color,fillColor:color,fillOpacity:0.15,weight:2,dashArray:'6,4',interactive:false}).addTo(map);
+  }
+  var arrowDiv=L.divIcon({className:'arrow-marker',html:ARROW_SVG.replace('%2358a6ff',encodeURIComponent(color)),iconSize:[24,24],iconAnchor:[12,12]});
+  arrowMarker=L.marker(latlngs[0],{icon:arrowDiv,interactive:false}).addTo(map);
+  var bounds=L.latLngBounds(pts.map(function(p){return[p.lat,p.lon]}));
+  map.flyToBounds(bounds.pad(0.15),{duration:1.2});
+  document.getElementById('rpTitle').textContent=currentRide.user_name+"'s Ride";
+  document.getElementById('rpDate').textContent=currentRide.time?formatDate(currentRide.time).full:'Unknown';
+  var isOwn=currentUser&&currentRide.user_id===currentUser.id;
+  var badge=document.getElementById('rpBadge');
+  if(isOwn){badge.textContent='YOUR RIDE';badge.className='rbbadge claimed'}
+  else{badge.textContent=currentRide.user_name;badge.className='rbbadge historical'}
+  document.getElementById('rpStats').innerHTML=
+    '<div class="rps"><div class="rv">'+(s.distance/1000).toFixed(2)+'</div><div class="rl">KM DISTANCE</div></div>'+
+    '<div class="rps"><div class="rv">'+formatDuration(s.duration)+'</div><div class="rl">DURATION</div></div>'+
+    '<div class="rps"><div class="rv">'+s.avgSpeed.toFixed(1)+'</div><div class="rl">AVG KM/H</div></div>'+
+    '<div class="rps"><div class="rv">'+s.maxSpeed.toFixed(1)+'</div><div class="rl">MAX KM/H</div></div>'+
+    '<div class="rps"><div class="rv">'+s.elevGain.toFixed(0)+'</div><div class="rl">ELEV GAIN M</div></div>'+
+    '<div class="rps"><div class="rv">'+formatArea(currentRide.claimed_area_m2||0)+'</div><div class="rl">CLAIMED</div></div>';
+  document.getElementById('rpSpeedVal').textContent=s.avgSpeed.toFixed(1)+' km/h avg / '+s.maxSpeed.toFixed(0)+' km/h max';
+  document.getElementById('rpEleVal').textContent=s.elevGain.toFixed(0)+'m gained';
+  setTimeout(function(){
+    drawAxisGraph(document.getElementById('rpSpeedCanvas'),s.speeds,'#88ccff44',color,null);
+    drawAxisGraph(document.getElementById('rpEleCanvas'),s.eles,'#3fb95044','#3fb950',null);
+  },60);
+}
+
+async function renderLeaderboard(){
+  var data=await api('/api/leaderboard');
+  var list=document.getElementById('lbList');
+  if(!data||data.length===0){list.innerHTML='<div class="lb-empty">No riders yet</div>';return}
+  list.innerHTML='';
+  data.forEach(function(u,i){
+    var color=u.color||'#888';
+    var rankClass=i===0?'gold':i===1?'silver':i===2?'bronze':'';
+    var isMe=currentUser&&u.id===currentUser.id;
+    var row=document.createElement('div');
+    row.className='lb-row'+(isMe?' me':'');
+    row.innerHTML='<div class="lb-rank '+rankClass+'">'+(i+1)+'</div><div class="lb-dot" style="background:'+color+'"></div><div class="lb-name">'+u.name+'</div><div class="lb-area">'+formatArea(u.total_area)+'</div><div class="lb-rides">'+u.ride_count+' rides</div>';
+    list.appendChild(row);
+  });
+}
+
+async function loadRides(){
+  rides=await api('/api/rides');
+  userColors={};
+  var users=await api('/api/leaderboard');
+  users.forEach(function(u){userColors[u.id]=u.color});
+}
+
+async function login(name){
+  var data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+  if(data.error)return data.error;
+  currentUser=data;
+  localStorage.setItem('tc_user',JSON.stringify(currentUser));
+  userColors[currentUser.id]=currentUser.color;
+  return null;
+}
+
+function logout(){
+  currentUser=null;
+  localStorage.removeItem('tc_user');
+  document.getElementById('authOverlay').classList.remove('hidden');
+  document.getElementById('userBadge').style.display='none';
+  document.getElementById('dropArea').style.opacity='0.3';
+  document.getElementById('dropArea').style.pointerEvents='none';
+}
+
+async function handleGPXDrop(xml){
+  var parsed=parseGPX(xml);if(!parsed){alert('No tracks found in GPX');return}
+  if(!currentUser){alert('Please login first');return}
+  var stats=calcStats(parsed.points);
+  var rideData={user_id:currentUser.id,user_name:currentUser.name,points:parsed.points,stats:stats,time:parsed.time};
+  var result=await api('/api/rides',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rideData)});
+  if(result.error){alert(result.error);return}
+  await loadRides();
+  var idx=rides.findIndex(function(r){return r.id===result.id});
+  if(idx>=0)openRideView(idx);
+  else openRideView(rides.length-1);
+  renderLeaderboard();
+}
+
+async function init(){
+  initMap();
+  var saved=localStorage.getItem('tc_user');
+  if(saved){
+    try{currentUser=JSON.parse(saved)}catch(e){currentUser=null}
+  }
+
+  if(currentUser){
+    var err=await login(currentUser.name);
+    if(err){currentUser=null;localStorage.removeItem('tc_user')}
+  }
+
+  await loadRides();
+  renderWorldTerritories();
+
+  if(currentUser){
+    document.getElementById('authOverlay').classList.add('hidden');
+    document.getElementById('userBadge').style.display='flex';
+    document.getElementById('ubDot').style.background=currentUser.color;
+    document.getElementById('ubName').textContent=currentUser.name;
+    document.getElementById('dropArea').style.opacity='1';
+    document.getElementById('dropArea').style.pointerEvents='auto';
+  }else{
+    document.getElementById('authOverlay').classList.remove('hidden');
+    document.getElementById('dropArea').style.opacity='0.3';
+    document.getElementById('dropArea').style.pointerEvents='none';
+  }
+}
+
+document.getElementById('authBtn').addEventListener('click',async function(){
+  var name=document.getElementById('authName').value.trim();
+  if(!name){document.getElementById('authError').textContent='Enter a name';return}
+  document.getElementById('authError').textContent='';
+  document.getElementById('authBtn').disabled=true;document.getElementById('authBtn').textContent='Joining...';
+  var err=await login(name);
+  document.getElementById('authBtn').disabled=false;document.getElementById('authBtn').textContent='Enter';
+  if(err){document.getElementById('authError').textContent=err;return}
+  document.getElementById('authOverlay').classList.add('hidden');
+  document.getElementById('userBadge').style.display='flex';
+  document.getElementById('ubDot').style.background=currentUser.color;
+  document.getElementById('ubName').textContent=currentUser.name;
+  document.getElementById('dropArea').style.opacity='1';
+  document.getElementById('dropArea').style.pointerEvents='auto';
+  await loadRides();renderWorldTerritories();renderLeaderboard();
+});
+document.getElementById('authName').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('authBtn').click()});
+document.getElementById('ubLogout').addEventListener('click',function(e){e.stopPropagation();logout()});
+
+document.getElementById('browseLink').addEventListener('click',function(e){
+  e.preventDefault();e.stopPropagation();
+  document.getElementById('fileInput').click();
+});
+document.getElementById('dropArea').addEventListener('click',function(e){
+  if(e.target&&e.target.id==='browseLink')return;
+  document.getElementById('fileInput').click();
+});
+document.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();document.getElementById('dropArea').classList.add('active')});
+document.addEventListener('dragleave',function(e){e.preventDefault();document.getElementById('dropArea').classList.remove('active')});
+document.addEventListener('drop',function(e){
+  e.preventDefault();e.stopPropagation();
+  document.getElementById('dropArea').classList.remove('active');
+  var file=e.dataTransfer.files[0];
+  if(!file||!file.name.toLowerCase().endsWith('.gpx')){alert('Please drop a .gpx file');return}
+  var reader=new FileReader();
+  reader.onload=function(ev){handleGPXDrop(ev.target.result)};
+  reader.readAsText(file);
+});
+document.getElementById('fileInput').addEventListener('change',function(e){
+  var file=e.target.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(ev){handleGPXDrop(ev.target.result)};
+  reader.readAsText(file);
+  e.target.value='';
+});
+
+document.getElementById('historyBtn').addEventListener('click',function(){renderHistory();document.getElementById('sidebar').classList.add('open')});
+document.getElementById('rideHistoryBtn').addEventListener('click',function(){renderHistory();document.getElementById('sidebar').classList.toggle('open')});
+document.getElementById('sidebarClose').addEventListener('click',function(){document.getElementById('sidebar').classList.remove('open')});
+document.getElementById('backBtn').addEventListener('click',function(){closeRideView()});
+document.getElementById('layerSelect').addEventListener('change',function(e){
+  getTileSets();
+  Object.values(tileSets).forEach(function(l){if(map.hasLayer(l))map.removeLayer(l)});
+  tileSets[e.target.value].addTo(map);
+});
+document.getElementById('rpanel').addEventListener('click',function(e){if(e.target.id==='rpanel')document.getElementById('rpanel').classList.remove('visible')});
+document.getElementById('flybyPlay').addEventListener('click',function(){
+  if(animating){stopFlyby()}else{animElapsed=0;flybyLoop()}
+});
+document.getElementById('flybyProgress').addEventListener('input',function(e){animElapsed=parseFloat(e.target.value);updateFlybyDisplay()});
+document.getElementById('flybySpeed').addEventListener('click',function(){
+  speedIdx=(speedIdx+1)%speedOptions.length;animSpeed=speedOptions[speedIdx];
+  document.getElementById('flybySpeed').textContent=animSpeed+'x';
+});
+document.getElementById('rpFlybyBtn').addEventListener('click',function(){startFlyby()});
+
+document.getElementById('leaderboardBtn').addEventListener('click',function(){
+  var panel=document.getElementById('lbPanel');
+  if(panel.classList.contains('visible')){panel.classList.remove('visible');return}
+  renderLeaderboard();panel.classList.add('visible');
+});
+document.getElementById('lbClose').addEventListener('click',function(){document.getElementById('lbPanel').classList.remove('visible')});
+
+function smoothArray(arr,w){
+  var r=[];var hw=Math.floor(w/2);
+  for(var i=0;i<arr.length;i++){var sum=0,count=0;for(var j=Math.max(0,i-hw);j<=Math.min(arr.length-1,i+hw);j++){sum+=arr[j];count++}r.push(count>0?sum/count:0)}
+  return r;
+}
+function flybyLoop(){
+  if(!animating||!currentRide)return;
+  var s=currentRide.stats;var pts=s.points;
+  animElapsed+=0.05*animSpeed;
+  if(animElapsed>=pts.length-1){animElapsed=pts.length-1;updateFlybyDisplay();stopFlyby();return}
+  updateFlybyDisplay();
+  animFrame=requestAnimationFrame(flybyLoop);
+}
+function updateFlybyDisplay(){
+  if(!currentRide)return;var s=currentRide.stats;var pts=s.points;
+  if(pts.length<2)return;
+  var idx=Math.min(Math.floor(animElapsed),pts.length-1);
+  var frac=animElapsed-idx;
+  var p0=pts[idx],p1=pts[Math.min(idx+1,pts.length-1)];
+  var lat=p0.lat+(p1.lat-p0.lat)*frac,lon=p0.lon+(p1.lon-p0.lon)*frac;
+  if(arrowMarker)try{arrowMarker.setLatLng([lat,lon])}catch(e){}
+  if(map)try{map.panTo([lat,lon],{animate:false})}catch(e){}
+  document.getElementById('flybyProgress').value=animElapsed;
+  var totalFmt=formatDuration(s.duration),currFmt=formatDuration(s.duration*(animElapsed/(pts.length-1)));
+  document.getElementById('flybyTime').textContent=currFmt+' / '+totalFmt;
+}
+function startFlyby(){
+  if(!currentRide)return;
+  var s=currentRide.stats;
+  if(s.points.length<2)return;
+  animating=true;animElapsed=0;
+  smoothedSpeeds=smoothArray(s.speeds,5);
+  document.getElementById('flyby').classList.add('visible');
+  document.getElementById('flybyProgress').max=s.points.length-1;
+  updateFlybyDisplay();
+  flybyLoop();
+}
+function stopFlyby(){animating=false;if(animFrame)cancelAnimationFrame(animFrame);setTimeout(function(){document.getElementById('flyby').classList.remove('visible')},300)}
+
+init();
+</script>
+</body>
+</html>

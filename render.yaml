@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: territory-claimer
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python territory_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
