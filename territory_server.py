@@ -49,11 +49,18 @@ def make_user_id(name):
 def build_route_polygon(points):
     if len(points) < 3:
         return None
+    start = points[0]
+    end = points[-1]
+    dlat = (end['lat'] - start['lat']) * 111320.0
+    dlon = (end['lon'] - start['lon']) * 111320.0 * math.cos(math.radians(start['lat']))
+    close_dist = math.sqrt(dlat * dlat + dlon * dlon)
+    if close_dist > 500:
+        return None
     coords = [(p['lon'], p['lat']) for p in points]
     coords.append(coords[0])
     try:
         poly = Polygon(coords)
-        if poly.is_valid and not poly.is_empty:
+        if poly.is_valid and not poly.is_empty and project_area_m2(poly) > 10:
             return poly
     except Exception:
         pass
@@ -211,10 +218,11 @@ def upload_ride():
     db.commit()
     db.close()
 
+    loop_detected = poly is not None and claimed_m2 > 0
     return jsonify({
         'id': ride_id, 'user_id': user_id, 'user_name': user_name,
         'time': ride_time, 'points': points, 'stats': stats,
-        'claimed_area_m2': claimed_m2
+        'claimed_area_m2': claimed_m2, 'loop_detected': loop_detected
     })
 
 @app.route('/api/leaderboard', methods=['GET'])
