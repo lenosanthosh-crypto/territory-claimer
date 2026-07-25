@@ -578,12 +578,9 @@ async function handleGPXDrop(xml){
   var result=await api('/api/rides',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(rideData)});
   if(result.error){alert(result.error);return}
   await loadRides();
-  var idx=rides.findIndex(function(r){return r.id===result.id});
   renderWorldTerritories();
   renderLeaderboard();
-  if(!result.loop_detected){
-    alert('Ride saved! No loop detected — start and end points must be within 500m to claim territory.');
-  }
+  var idx=rides.findIndex(function(r){return r.id===result.id});
   if(idx>=0)openRideView(idx);
   else openRideView(rides.length-1);
 }
