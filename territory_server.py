@@ -185,33 +185,30 @@ def upload_ride():
     if not user_id or len(points) < 2:
         return jsonify({'error': 'Invalid data'}), 400
 
-    poly = build_route_polygon(points)
-    if poly is None:
-        return jsonify({'error': 'No loop detected. Start and end points must be within 500m and enclose at least 10 m\u00B2 to claim territory.'}), 400
-
     db = get_db()
-    claimed_area = poly
-    claimed_m2 = project_area_m2(poly)
+    poly = build_route_polygon(points)
+    claimed_m2 = 0
 
     cur = db.execute(
         'INSERT INTO rides (user_id, user_name, time, points_json, stats_json, route_polygon_json, claimed_area_json, claimed_area_m2, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         (user_id, user_name, ride_time, json.dumps(points), json.dumps(stats),
-         json.dumps(mapping(poly)),
-         json.dumps(mapping(claimed_area)),
-         claimed_m2, time.time())
+         json.dumps(mapping(poly)) if poly else None,
+         json.dumps(mapping(poly)) if poly else None,
+         0, time.time())
     )
     ride_id = cur.lastrowid
 
-    final_claimed = recompute_claims(db, ride_id, user_id, poly, ride_time)
-    if final_claimed is not None and not final_claimed.is_empty:
-        db.execute(
-            'UPDATE rides SET claimed_area_json = ?, claimed_area_m2 = ? WHERE id = ?',
-            (json.dumps(mapping(final_claimed)), project_area_m2(final_claimed), ride_id)
-        )
-        claimed_m2 = project_area_m2(final_claimed)
-    else:
-        db.execute('UPDATE rides SET claimed_area_json = NULL, claimed_area_m2 = 0 WHERE id = ?', (ride_id,))
-        claimed_m2 = 0
+    if poly:
+        final_claimed = recompute_claims(db, ride_id, user_id, poly, ride_time)
+        if final_claimed is not None and not final_claimed.is_empty:
+            db.execute(
+                'UPDATE rides SET claimed_area_json = ?, claimed_area_m2 = ? WHERE id = ?',
+                (json.dumps(mapping(final_claimed)), project_area_m2(final_claimed), ride_id)
+            )
+            claimed_m2 = project_area_m2(final_claimed)
+        else:
+            db.execute('UPDATE rides SET claimed_area_json = NULL, claimed_area_m2 = 0 WHERE id = ?', (ride_id,))
+            claimed_m2 = 0
 
     db.execute('UPDATE users SET ride_count = ride_count + 1 WHERE id = ?', (user_id,))
     row = db.execute('SELECT COALESCE(SUM(claimed_area_m2), 0) as total FROM rides WHERE user_id = ?', (user_id,)).fetchone()
@@ -223,7 +220,7 @@ def upload_ride():
     return jsonify({
         'id': ride_id, 'user_id': user_id, 'user_name': user_name,
         'time': ride_time, 'points': points, 'stats': stats,
-        'claimed_area_m2': claimed_m2
+        'claimed_area_m2': claimed_m2, 'loop_detected': poly is not None
     })
 
 @app.route('/api/leaderboard', methods=['GET'])
